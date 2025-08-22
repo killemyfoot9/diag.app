@@ -1,0 +1,9 @@
+normal no-stress test
+
+python -m diagnostician.main --duration 20
+
+stress test+diag
+
+python -m diagnostician.main --stress --duration 20
+
+

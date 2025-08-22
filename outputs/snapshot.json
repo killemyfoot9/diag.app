@@ -1,0 +1,123 @@
+{
+  "hw": {
+    "cpu": {
+      "name": "AMD Ryzen 5 8645HS w/ Radeon 760M Graphics",
+      "cores_physical": 6,
+      "cores_logical": 12,
+      "max_freq_mhz": 4301.0
+    },
+    "gpu": [
+      {
+        "name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+        "driver": "580.97",
+        "vram_gb": 5.9970703125,
+        "temp_c": 49.0
+      }
+    ],
+    "ram_gb": 6.76,
+    "disks": [
+      {
+        "device": "C:\\",
+        "mount": "C:\\",
+        "fs": "NTFS",
+        "size_gb": 511.31,
+        "free_gb": 57.39
+      }
+    ],
+    "temps": {
+      "cpu_c": null,
+      "gpu_c": null
+    }
+  },
+  "os": {
+    "name": "Windows",
+    "version": "10.0.26100",
+    "build": "11",
+    "uptime_hours": 11.4,
+    "last_boot": "2025-08-21T15:35:47.064784"
+  },
+  "perf": {
+    "cpu_load_pct": 6.9,
+    "mem_used_gb": 6.34,
+    "ram_gb": 6.76,
+    "swap_used_gb": 6.31
+  },
+  "drivers": [],
+  "processes_top": [
+    {
+      "name": "pycharm64.exe",
+      "pid": 19964,
+      "cpu_pct": 0.0,
+      "mem_mb": 1517.4
+    },
+    {
+      "name": "chrome.exe",
+      "pid": 16772,
+      "cpu_pct": 0.0,
+      "mem_mb": 285.0
+    },
+    {
+      "name": "chrome.exe",
+      "pid": 19712,
+      "cpu_pct": 0.0,
+      "mem_mb": 230.1
+    },
+    {
+      "name": "chrome.exe",
+      "pid": 19660,
+      "cpu_pct": 0.0,
+      "mem_mb": 198.7
+    },
+    {
+      "name": "chrome.exe",
+      "pid": 15212,
+      "cpu_pct": 0.0,
+      "mem_mb": 144.4
+    },
+    {
+      "name": "python.exe",
+      "pid": 19892,
+      "cpu_pct": 0.0,
+      "mem_mb": 120.8
+    },
+    {
+      "name": "python.exe",
+      "pid": 12480,
+      "cpu_pct": 0.0,
+      "mem_mb": 108.9
+    },
+    {
+      "name": "MsMpEng.exe",
+      "pid": 5140,
+      "cpu_pct": 0.0,
+      "mem_mb": 105.4
+    },
+    {
+      "name": "explorer.exe",
+      "pid": 17480,
+      "cpu_pct": 0.0,
+      "mem_mb": 80.2
+    },
+    {
+      "name": "OmenCommandCenterBackground.exe",
+      "pid": 13460,
+      "cpu_pct": 0.0,
+      "mem_mb": 67.0
+    }
+  ],
+  "quick_tests": {
+    "cpu_burst": {
+      "ok": true,
+      "note": "CPU burst completed",
+      "dummy": 68497945013700000
+    },
+    "mem_probe": {
+      "ok": true,
+      "note": "Allocated 256MB OK"
+    },
+    "disk_probe": {
+      "ok": true,
+      "issues": []
+    }
+  }
+}

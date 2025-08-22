@@ -1,0 +1,4 @@
+psutil
+py-cpuinfo
+pandas
+requests

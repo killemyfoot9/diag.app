@@ -1,0 +1,11 @@
+name,pid,cpu_pct,mem_mb
+pycharm64.exe,19964,0.0,1517.4
+chrome.exe,16772,0.0,285.0
+chrome.exe,19712,0.0,230.1
+chrome.exe,19660,0.0,198.7
+chrome.exe,15212,0.0,144.4
+python.exe,19892,0.0,120.8
+python.exe,12480,0.0,108.9
+MsMpEng.exe,5140,0.0,105.4
+explorer.exe,17480,0.0,80.2
+OmenCommandCenterBackground.exe,13460,0.0,67.0

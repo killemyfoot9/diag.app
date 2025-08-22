@@ -1,0 +1,16 @@
+[
+  {
+    "component": "RAM",
+    "issue": "High memory pressure",
+    "evidence": "mem_used 6.34GB / 6.76GB > 90%",
+    "severity": "medium",
+    "fix": "Close heavy apps, add RAM, reduce browser tabs, optimize startup."
+  },
+  {
+    "component": "RAM",
+    "issue": "Swap in use",
+    "evidence": "swap_used 6.31GB",
+    "severity": "low",
+    "fix": "Add RAM or reduce memory usage; check background processes."
+  }
+]
