@@ -1,5 +1,9 @@
-streamlit==1.32.0
-psutil==5.9.8
-pandas==2.1.4
-plotly==5.18.0
-requests==2.31.0
+streamlit
+psutil
+pandas
+plotly
+requests
+numpy
+matplotlib
+pillow
+py-cpuinfo
