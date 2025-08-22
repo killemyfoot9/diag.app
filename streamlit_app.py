@@ -7,7 +7,6 @@ import pandas as pd
 import plotly.express as px
 import random
 import streamlit.components.v1 as components
-from pathlib import Path
 import base64
 import json
 import requests
@@ -48,13 +47,6 @@ def check_ollama_model_available():
         return False
     except:
         return False
-
-def run_diagnostician(duration=10, model="skipped"):
-    """Runs diagnostician as subprocess and saves outputs."""
-    cmd = ["python", "-m", "diagnostician.main", "--duration", str(duration)]
-    if model != "skipped":
-        cmd += ["--model", model]
-    subprocess.run(cmd)
 
 def monitor_system(duration=10):
     """Collect live CPU, RAM, Disk, FPS usage with live plotting + stats."""
@@ -170,15 +162,7 @@ def stress_test_cpu(duration=10, intensity="medium"):
             cpu_freq.append(0)
 
         # Get CPU temperature (if available)
-        try:
-            temp = psutil.sensors_temperatures()
-            if 'coretemp' in temp:
-                core_temp = max([t.current for t in temp['coretemp'] if hasattr(t, 'current')])
-                cpu_temp.append(core_temp)
-            else:
-                cpu_temp.append(0)
-        except:
-            cpu_temp.append(0)
+        cpu_temp.append(0)  # Simplified - temperature monitoring removed
 
         timestamps.append(time.strftime("%H:%M:%S"))
         time.sleep(0.1)  # Shorter sleep for more frequent sampling
@@ -190,7 +174,6 @@ def stress_test_cpu(duration=10, intensity="medium"):
 
     # Analyze results
     avg_usage = sum(cpu_usage) / len(cpu_usage) if cpu_usage else 0
-    max_temp = max(cpu_temp) if any(cpu_temp) else 0
 
     # Determine CPU health with intensity-adjusted thresholds
     cpu_status = "✅ Good"
@@ -210,41 +193,30 @@ def stress_test_cpu(duration=10, intensity="medium"):
         cpu_issues.append(f"CPU not reaching expected utilization ({avg_usage:.1f}% < 85%) during {intensity} stress test")
         cpu_status = "⚠️ Warning"
 
-    if max_temp > 90:
-        cpu_issues.append(f"CPU temperature too high ({max_temp}°C)")
-        cpu_status = "❌ Critical"
-    elif max_temp > 80:
-        cpu_issues.append(f"CPU temperature elevated ({max_temp}°C)")
-        if cpu_status != "❌ Critical":
-            cpu_status = "⚠️ Warning"
-
     if any(freq < 1000 for freq in cpu_freq if freq > 0):
         cpu_issues.append("CPU frequency dropping significantly under load")
         cpu_status = "⚠️ Warning"
 
-    # Create DataFrame for visualization but convert to dict for JSON
+    # Create DataFrame for visualization
     data_df = pd.DataFrame({
         "Time": timestamps,
         "CPU Usage %": cpu_usage,
-        "CPU Frequency": cpu_freq,
-        "CPU Temperature": cpu_temp
+        "CPU Frequency": cpu_freq
     })
 
     # Convert DataFrame to dict for JSON serialization
     data_dict = {
         "Time": timestamps,
         "CPU Usage %": cpu_usage,
-        "CPU Frequency": cpu_freq,
-        "CPU Temperature": cpu_temp
+        "CPU Frequency": cpu_freq
     }
 
     return {
         "status": cpu_status,
         "issues": cpu_issues,
         "avg_usage": avg_usage,
-        "max_temp": max_temp,
-        "data": data_dict,  # Use dict instead of DataFrame for JSON
-        "data_df": data_df  # Keep DataFrame for visualization
+        "data": data_dict,
+        "data_df": data_df
     }
 
 def stress_test_ram(duration=10, intensity="medium"):
@@ -316,7 +288,7 @@ def stress_test_ram(duration=10, intensity="medium"):
         ram_issues.append("RAM test failed to allocate memory")
         ram_status = "❌ Critical"
 
-    # Create DataFrame for visualization but convert to dict for JSON
+    # Create DataFrame for visualization
     data_df = pd.DataFrame({
         "Time": timestamps,
         "RAM Usage %": ram_usage,
@@ -334,8 +306,8 @@ def stress_test_ram(duration=10, intensity="medium"):
         "status": ram_status,
         "issues": ram_issues,
         "avg_usage": avg_usage,
-        "data": data_dict,  # Use dict instead of DataFrame for JSON
-        "data_df": data_df  # Keep DataFrame for visualization
+        "data": data_dict,
+        "data_df": data_df
     }
 
 def stress_test_disk(duration=10, intensity="medium"):
@@ -344,17 +316,17 @@ def stress_test_disk(duration=10, intensity="medium"):
 
     # Adjust test file size based on intensity
     if intensity == "low":
+        file_size = 50 * 1024 * 1024  # 50MB
+        iterations = 3
+    elif intensity == "medium":
         file_size = 100 * 1024 * 1024  # 100MB
         iterations = 5
-    elif intensity == "medium":
-        file_size = 200 * 1024 * 1024  # 200MB
-        iterations = 10
     elif intensity == "high":
-        file_size = 500 * 1024 * 1024  # 500MB
-        iterations = 15
+        file_size = 200 * 1024 * 1024  # 200MB
+        iterations = 8
     else:  # extreme
-        file_size = 1000 * 1024 * 1024  # 1GB
-        iterations = 20
+        file_size = 500 * 1024 * 1024  # 500MB
+        iterations = 12
 
     # Test disk performance
     start_time = time.time()
@@ -425,16 +397,15 @@ def stress_test_disk(duration=10, intensity="medium"):
     disk_issues = []
 
     # Adjust thresholds based on drive type (SSD vs HDD)
-    # Assuming SSD for modern systems, adjust if needed
-    if avg_read < 100:  # Less than 100MB/s read for SSD
+    if avg_read < 50:  # Less than 50MB/s read
         disk_issues.append(f"Disk read speed slow ({avg_read:.1f} MB/s)")
         disk_status = "⚠️ Warning"
 
-    if avg_write < 50:  # Less than 50MB/s write for SSD
+    if avg_write < 30:  # Less than 30MB/s write
         disk_issues.append(f"Disk write speed slow ({avg_write:.1f} MB/s)")
         disk_status = "⚠️ Warning"
 
-    # Create DataFrame for visualization but convert to dict for JSON
+    # Create DataFrame for visualization
     data_df = pd.DataFrame({
         "Time": timestamps,
         "Disk Usage %": disk_usage,
@@ -455,37 +426,13 @@ def stress_test_disk(duration=10, intensity="medium"):
         "issues": disk_issues,
         "avg_read_speed": avg_read,
         "avg_write_speed": avg_write,
-        "data": data_dict,  # Use dict instead of DataFrame for JSON
-        "data_df": data_df  # Keep DataFrame for visualization
+        "data": data_dict,
+        "data_df": data_df
     }
-
-def get_gpu_info_nvidia_smi():
-    """Get GPU information using nvidia-smi command"""
-    try:
-        # Try to get GPU info using nvidia-smi
-        result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used,temperature.gpu', '--format=csv,noheader,nounits'], 
-                              capture_output=True, text=True, timeout=5)
-        
-        if result.returncode == 0:
-            gpu_data = result.stdout.strip().split('\n')
-            gpu_info = []
-            for line in gpu_data:
-                if line.strip():
-                    utilization, memory_used, temperature = line.split(', ')
-                    gpu_info.append({
-                        'utilization': float(utilization),
-                        'memory_used': float(memory_used),
-                        'temperature': float(temperature)
-                    })
-            return gpu_info
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-        pass
-    
-    return None
 
 def stress_test_gpu(duration=10, intensity="medium"):
     """Stress test GPU and check for issues with intensity control"""
-    st.info(f"🎮 Stress testing GPU ({intensity} intensity)...")
+    st.info(f"🎮 GPU Diagnostic ({intensity} intensity) - Using simulated data")
 
     start_time = time.time()
     end_time = start_time + duration
@@ -495,62 +442,39 @@ def stress_test_gpu(duration=10, intensity="medium"):
     gpu_memory = []
     timestamps = []
 
-    # Try to get real GPU info using nvidia-smi
-    has_real_gpu_data = False
-    
-    # Adjust GPU stress based on intensity
-    sleep_time = 1.0  # Default sleep time
+    # Use simulated data for GPU
+    sleep_time = 1.0
 
     while time.time() < end_time:
         try:
-            # Try to get real GPU data
-            gpu_info = get_gpu_info_nvidia_smi()
-            
-            if gpu_info and len(gpu_info) > 0:
-                has_real_gpu_data = True
-                # Use data from first GPU
-                gpu_usage.append(gpu_info[0]['utilization'])
-                gpu_temp.append(gpu_info[0]['temperature'])
-                gpu_memory.append(gpu_info[0]['memory_used'])
-            else:
-                # If no GPU monitoring available, use a more realistic simulation
-                if intensity == "low":
-                    usage = random.randint(30, 60)
-                    temp = random.randint(40, 65)
-                elif intensity == "medium":
-                    usage = random.randint(50, 80)
-                    temp = random.randint(50, 75)
-                elif intensity == "high":
-                    usage = random.randint(70, 95)
-                    temp = random.randint(60, 85)
-                else:  # extreme
-                    usage = random.randint(85, 99)
-                    temp = random.randint(70, 90)
-                    
-                gpu_usage.append(usage)
-                gpu_temp.append(temp)
-                gpu_memory.append(random.randint(2000, 6000))
-
-            timestamps.append(time.strftime("%H:%M:%S"))
-            time.sleep(sleep_time)
-        except Exception as e:
-            # If GPU monitoring fails, use simulation
+            # Simulate GPU data based on intensity
             if intensity == "low":
                 usage = random.randint(30, 60)
                 temp = random.randint(40, 65)
+                memory = random.randint(1000, 3000)
             elif intensity == "medium":
                 usage = random.randint(50, 80)
                 temp = random.randint(50, 75)
+                memory = random.randint(2000, 4000)
             elif intensity == "high":
                 usage = random.randint(70, 95)
                 temp = random.randint(60, 85)
+                memory = random.randint(3000, 6000)
             else:  # extreme
                 usage = random.randint(85, 99)
                 temp = random.randint(70, 90)
+                memory = random.randint(4000, 8000)
                 
             gpu_usage.append(usage)
             gpu_temp.append(temp)
-            gpu_memory.append(random.randint(2000, 6000))
+            gpu_memory.append(memory)
+            timestamps.append(time.strftime("%H:%M:%S"))
+            time.sleep(sleep_time)
+        except Exception as e:
+            # Fallback values if simulation fails
+            gpu_usage.append(50)
+            gpu_temp.append(60)
+            gpu_memory.append(3000)
             timestamps.append(time.strftime("%H:%M:%S"))
             time.sleep(1)
 
@@ -558,38 +482,11 @@ def stress_test_gpu(duration=10, intensity="medium"):
     avg_usage = sum(gpu_usage) / len(gpu_usage) if gpu_usage else 0
     max_temp = max(gpu_temp) if gpu_temp else 0
 
-    # Determine GPU health with intensity-adjusted thresholds
+    # Determine GPU health
     gpu_status = "✅ Good"
-    gpu_issues = []
+    gpu_issues = ["GPU monitoring not available - using simulated data for visualization"]
 
-    # Only check utilization if we have real GPU data
-    if has_real_gpu_data:
-        # Adjust thresholds based on intensity
-        if intensity == "low" and avg_usage < 30:
-            gpu_issues.append(f"GPU not properly utilized ({avg_usage:.1f}% < 30%) during {intensity} stress test")
-            gpu_status = "⚠️ Warning"
-        elif intensity == "medium" and avg_usage < 50:
-            gpu_issues.append(f"GPU not properly utilized ({avg_usage:.1f}% < 50%) during {intensity} stress test")
-            gpu_status = "⚠️ Warning"
-        elif intensity == "high" and avg_usage < 70:
-            gpu_issues.append(f"GPU not properly utilized ({avg_usage:.1f}% < 70%) during {intensity} stress test")
-            gpu_status = "⚠️ Warning"
-        elif intensity == "extreme" and avg_usage < 85:
-            gpu_issues.append(f"GPU not properly utilized ({avg_usage:.1f}% < 85%) during {intensity} stress test")
-            gpu_status = "⚠️ Warning"
-    else:
-        # If we don't have real GPU data, don't report utilization issues
-        gpu_issues.append("GPU monitoring not available - using simulated data for visualization")
-
-    if max_temp > 85:
-        gpu_issues.append(f"GPU temperature too high ({max_temp}°C)")
-        gpu_status = "❌ Critical"
-    elif max_temp > 75:
-        gpu_issues.append(f"GPU temperature elevated ({max_temp}°C)")
-        if gpu_status != "❌ Critical":
-            gpu_status = "⚠️ Warning"
-
-    # Create DataFrame for visualization but convert to dict for JSON
+    # Create DataFrame for visualization
     data_df = pd.DataFrame({
         "Time": timestamps,
         "GPU Usage %": gpu_usage,
@@ -610,8 +507,8 @@ def stress_test_gpu(duration=10, intensity="medium"):
         "issues": gpu_issues,
         "avg_usage": avg_usage,
         "max_temp": max_temp,
-        "data": data_dict,  # Use dict instead of DataFrame for JSON
-        "data_df": data_df  # Keep DataFrame for visualization
+        "data": data_dict,
+        "data_df": data_df
     }
 
 def get_ai_recommendation(component, issues):
@@ -683,48 +580,71 @@ else:
 # ----------------------
 st.subheader("🖼️ 3D Model Preview")
 
-model_path = r"C:\Users\Husmiya\Downloads\pc_diagnostician\1990-mercedes-benz-190e-25-16-evolution-ii\source\1990 Mercedes-Benz 190 Evo II.glb"
+# Try to find the 3D model file in common locations
+model_paths = [
+    r"C:\Users\Husmiya\Downloads\pc_diagnostician\1990-mercedes-benz-190e-25-16-evolution-ii\source\1990 Mercedes-Benz 190 Evo II.glb",
+    "./1990 Mercedes-Benz 190 Evo II.glb",
+    "./3d-model.glb",
+    "./model.glb"
+]
 
-if os.path.exists(model_path):
+model_path = None
+for path in model_paths:
+    if os.path.exists(path):
+        model_path = path
+        break
+
+if model_path and os.path.exists(model_path):
     st.info(f"3D model found: {model_path}")
 
-    model_base64 = get_base64_encoded_file(model_path)
+    try:
+        model_base64 = get_base64_encoded_file(model_path)
+        
+        if model_base64:
+            html_code = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <script type="module" src="https://unpkg.com/@google/model-viewer@^2.1.1/dist/model-viewer.min.js"></script>
+                <style>
+                    model-viewer {{
+                        width: 100%;
+                        height: 400px;
+                        background-color: #f0f0f0;
+                    }}
+                </style>
+            </head>
+            <body>
+                <model-viewer 
+                    src="data:model/gltf-binary;base64,{model_base64}" 
+                    alt="Mercedes-Benz 190 Evo II" 
+                    auto-rotate 
+                    camera-controls 
+                    shadow-intensity="1.0"
+                    environment-intensity="1.0"
+                    exposure="1.0"
+                    environment-image="neutral"
+                    poster-color="transparent">
+                </model-viewer>
+            </body>
+            </html>
+            """
 
-    if model_base64:
-        html_code = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <script type="module" src="https://unpkg.com/@google/model-viewer@^2.1.1/dist/model-viewer.min.js"></script>
-            <style>
-                model-viewer {{
-                    width: 100%;
-                    height: 400px;
-                    background-color: #f0f0f0;
-                }}
-            </style>
-        </head>
-        <body>
-            <model-viewer 
-                src="data:model/gltf-binary;base64,{model_base64}" 
-                alt="Mercedes-Benz 190 Evo II" 
-                auto-rotate 
-                camera-controls 
-                shadow-intensity="1.0"
-                environment-intensity="1.0"
-                exposure="1.0"
-                environment-image="neutral"
-                poster-color="transparent">
-            </model-viewer>
-        </body>
-        </html>
-        """
-
-        components.html(html_code, height=420)
-    else:
-        st.error("Failed to load the 3D model.")
+            components.html(html_code, height=420)
+        else:
+            st.error("Failed to load the 3D model.")
+    except Exception as e:
+        st.warning(f"Could not load 3D model: {str(e)}")
 else:
     st.warning("3D model file not found. Diagnostic features are still available.")
+
+# ----------------------
+# Live System Monitoring
+# ----------------------
+st.subheader("📊 Live System Monitoring")
+
+if st.button("Start Live Monitoring", key="live_monitor"):
+    monitor_system(10)  # Monitor for 10 seconds
 
 # ----------------------
 # Diagnostic Controls
@@ -755,8 +675,6 @@ if st.button("Run Complete Diagnostic"):
 
         # Display CPU utilization metrics
         st.metric("Average CPU Utilization", f"{cpu_result['avg_usage']:.1f}%")
-        if cpu_result['max_temp'] > 0:
-            st.metric("Maximum Temperature", f"{cpu_result['max_temp']}°C")
 
         st.plotly_chart(px.line(cpu_result['data_df'], x="Time", y="CPU Usage %",
                                 title="CPU Usage During Stress Test"))
@@ -823,7 +741,7 @@ if st.button("Run Complete Diagnostic"):
         st.markdown(f"**Status:** {gpu_result['status']}")
 
         if gpu_result['issues']:
-            st.error("**Issues found:**")
+            st.warning("**Notes:**")
             for issue in gpu_result['issues']:
                 st.write(f"- {issue}")
         else:
@@ -842,7 +760,7 @@ if st.button("Run Complete Diagnostic"):
 
         # AI Recommendations
         with st.spinner("Getting AI recommendations..."):
-            ai_advice = get_ai_recommendation("GPU", gpu_result['issues'])
+            ai_advice = get_ai_recommendation("GPU", [])
             st.info(f"**AI Recommendations:** {ai_advice}")
 
     with tab5:
@@ -873,7 +791,7 @@ if st.button("Run Complete Diagnostic"):
             if warning_issues > 0:
                 st.warning(f"⚠️ {warning_issues} potential issues found. Consider investigating.")
 
-        # Save report - using only JSON-serializable data
+        # Save report
         report = {
             "timestamp": datetime.now().isoformat(),
             "intensity": intensity,
@@ -883,28 +801,27 @@ if st.button("Run Complete Diagnostic"):
                     "status": cpu_result['status'],
                     "issues": cpu_result['issues'],
                     "avg_usage": cpu_result['avg_usage'],
-                    "max_temp": cpu_result['max_temp'],
-                    "data": cpu_result['data']  # This is now a dict, not DataFrame
+                    "data": cpu_result['data']
                 },
                 "ram": {
                     "status": ram_result['status'],
                     "issues": ram_result['issues'],
                     "avg_usage": ram_result['avg_usage'],
-                    "data": ram_result['data']  # This is now a dict, not DataFrame
+                    "data": ram_result['data']
                 },
                 "disk": {
                     "status": disk_result['status'],
                     "issues": disk_result['issues'],
                     "avg_read_speed": disk_result['avg_read_speed'],
                     "avg_write_speed": disk_result['avg_write_speed'],
-                    "data": disk_result['data']  # This is now a dict, not DataFrame
+                    "data": disk_result['data']
                 },
                 "gpu": {
                     "status": gpu_result['status'],
                     "issues": gpu_result['issues'],
                     "avg_usage": gpu_result['avg_usage'],
                     "max_temp": gpu_result['max_temp'],
-                    "data": gpu_result['data']  # This is now a dict, not DataFrame
+                    "data": gpu_result['data']
                 }
             }
         }
@@ -945,94 +862,6 @@ if st.button("Show System Specs"):
         st.write("**OS Information:**")
         st.write(f"- System: {os.name}")
         st.write(f"- Platform: {platform.platform()}")
-
-# Individual component testing
-st.subheader("🧪 Individual Component Tests")
-test_option = st.selectbox("Select component to test individually", 
-                          ["All Components", "CPU Only", "RAM Only", "Disk Only", "GPU Only"])
-
-if st.button("Run Individual Test"):
-    if test_option == "All Components":
-        st.warning("Use the 'Run Complete Diagnostic' button above for full testing")
-    else:
-        intensity = st.session_state.get('intensity', 'medium') if 'intensity' in st.session_state else 'medium'
-        duration = st.session_state.get('duration', 15) if 'duration' in st.session_state else 15
-        
-        if test_option == "CPU Only":
-            result = stress_test_cpu(duration, intensity)
-            component = "CPU"
-        elif test_option == "RAM Only":
-            result = stress_test_ram(duration, intensity)
-            component = "RAM"
-        elif test_option == "Disk Only":
-            result = stress_test_disk(duration, intensity)
-            component = "Disk"
-        else:  # GPU Only
-            result = stress_test_gpu(duration, intensity)
-            component = "GPU"
-            
-        st.subheader(f"{component} Test Results")
-        st.markdown(f"**Status:** {result['status']}")
-        
-        if result['issues']:
-            st.error("**Issues found:**")
-            for issue in result['issues']:
-                st.write(f"- {issue}")
-        else:
-            st.success("No issues detected!")
-            
-        # Display appropriate metrics based on component
-        if component == "CPU":
-            st.metric("Average Utilization", f"{result['avg_usage']:.1f}%")
-            if result['max_temp'] > 0:
-                st.metric("Maximum Temperature", f"{result['max_temp']}°C")
-        elif component == "RAM":
-            st.metric("Average Utilization", f"{result['avg_usage']:.1f}%")
-        elif component == "Disk":
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Average Read Speed", f"{result['avg_read_speed']:.1f} MB/s")
-            with col2:
-                st.metric("Average Write Speed", f"{result['avg_write_speed']:.1f} MB/s")
-        elif component == "GPU":
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Average Utilization", f"{result['avg_usage']:.1f}%")
-            with col2:
-                if result['max_temp'] > 0:
-                    st.metric("Maximum Temperature", f"{result['max_temp']}°C")
-        
-        # Show chart
-        if not result['data_df'].empty:
-            if component == "CPU":
-                st.plotly_chart(px.line(result['data_df'], x="Time", y="CPU Usage %", title=f"{component} Usage During Stress Test"))
-            elif component == "RAM":
-                st.plotly_chart(px.line(result['data_df'], x="Time", y="RAM Usage %", title=f"{component} Usage During Stress Test"))
-            elif component == "Disk":
-                st.plotly_chart(px.line(result['data_df'], x="Time", y="Read Speed (MB/s)", title=f"{component} Read Speed During Stress Test"))
-            elif component == "GPU":
-                st.plotly_chart(px.line(result['data_df'], x="Time", y="GPU Usage %", title=f"{component} Usage During Stress Test"))
-        
-        # AI Recommendations
-        with st.spinner("Getting AI recommendations..."):
-            ai_advice = get_ai_recommendation(component, result['issues'])
-            st.info(f"**AI Recommendations:** {ai_advice}")
-
-# Ollama troubleshooting
-st.subheader("🔧 Ollama Troubleshooting")
-st.markdown("""
-If you're having issues with Ollama:
-
-1. **Start Ollama**: Open a terminal and run `ollama serve`
-2. **Pull the model**: In another terminal, run `ollama pull qwen2.5:3b`
-3. **Check status**: Run `ollama list` to see available models
-4. **Verify connection**: The app should show "Ollama is running" above
-
-Common issues:
-- Firewall blocking port 11434
-- Ollama not in PATH
-- Model not downloaded yet
-""")
 
 # Instructions
 st.subheader("ℹ️ Instructions")
