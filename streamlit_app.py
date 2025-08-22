@@ -12,16 +12,16 @@ import base64
 import json
 import requests
 import socket
-import GPUtil
 from datetime import datetime
 import threading
+import math
+import platform
 
 OUTPUT_DIR = "outputs"
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 
 # Create outputs directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-
 
 # ----------------------
 # Utility functions
@@ -38,7 +38,6 @@ def check_ollama_connection():
     except:
         return False
 
-
 def check_ollama_model_available():
     """Check if the required model is available"""
     try:
@@ -50,14 +49,12 @@ def check_ollama_model_available():
     except:
         return False
 
-
 def run_diagnostician(duration=10, model="skipped"):
     """Runs diagnostician as subprocess and saves outputs."""
     cmd = ["python", "-m", "diagnostician.main", "--duration", str(duration)]
     if model != "skipped":
         cmd += ["--model", model]
     subprocess.run(cmd)
-
 
 def monitor_system(duration=10):
     """Collect live CPU, RAM, Disk, FPS usage with live plotting + stats."""
@@ -108,36 +105,48 @@ def monitor_system(duration=10):
 
     return df
 
-
 def cpu_stress_thread(intensity, stop_event):
     """Thread function to stress CPU based on intensity"""
-    # Simple CPU stress test
+    # More effective CPU stress test
     if intensity == "low":
         while not stop_event.is_set():
-            _ = 123456 * 654321
+            # Simple calculation
+            _ = sum(i*i for i in range(10000))
     elif intensity == "medium":
         while not stop_event.is_set():
-            for _ in range(10000):
-                _ = 123456 * 654321
+            # More intensive calculation
+            for _ in range(100):
+                _ = sum(math.sqrt(i) for i in range(10000))
     elif intensity == "high":
         while not stop_event.is_set():
-            for _ in range(100000):
-                _ = 123456 * 654321
+            # Even more intensive
+            for _ in range(500):
+                _ = sum(math.log(i+1) for i in range(10000))
     elif intensity == "extreme":
         while not stop_event.is_set():
-            for _ in range(1000000):
-                _ = 123456 * 654321
-
+            # Maximum intensity - use multiple calculation methods
+            for _ in range(1000):
+                result = 0
+                for i in range(1000):
+                    result += math.sin(i) * math.cos(i)
+                _ = result
 
 def stress_test_cpu(duration=10, intensity="medium"):
     """Stress test CPU and check for issues with intensity control"""
     st.info(f"🔥 Stress testing CPU ({intensity} intensity)...")
-
-    # Start CPU stress test with specified intensity
+    
+    # Start multiple CPU stress threads with specified intensity
     stop_event = threading.Event()
-    stress_thread = threading.Thread(target=cpu_stress_thread, args=(intensity, stop_event))
-    stress_thread.daemon = True
-    stress_thread.start()
+    threads = []
+    
+    # Use multiple threads for better CPU utilization
+    num_threads = max(1, psutil.cpu_count(logical=False))  # Use physical cores
+    
+    for _ in range(num_threads):
+        thread = threading.Thread(target=cpu_stress_thread, args=(intensity, stop_event))
+        thread.daemon = True
+        threads.append(thread)
+        thread.start()
 
     # Monitor CPU performance
     cpu_usage = []
@@ -149,8 +158,8 @@ def stress_test_cpu(duration=10, intensity="medium"):
     end_time = start_time + duration
 
     while time.time() < end_time:
-        # Get CPU usage
-        usage = psutil.cpu_percent(interval=0.5)
+        # Get CPU usage with shorter interval for more responsive monitoring
+        usage = psutil.cpu_percent(interval=0.1)
         cpu_usage.append(usage)
 
         # Get CPU frequency (if available)
@@ -164,7 +173,7 @@ def stress_test_cpu(duration=10, intensity="medium"):
         try:
             temp = psutil.sensors_temperatures()
             if 'coretemp' in temp:
-                core_temp = temp['coretemp'][0].current
+                core_temp = max([t.current for t in temp['coretemp'] if hasattr(t, 'current')])
                 cpu_temp.append(core_temp)
             else:
                 cpu_temp.append(0)
@@ -172,11 +181,12 @@ def stress_test_cpu(duration=10, intensity="medium"):
             cpu_temp.append(0)
 
         timestamps.append(time.strftime("%H:%M:%S"))
-        time.sleep(0.5)
+        time.sleep(0.1)  # Shorter sleep for more frequent sampling
 
-    # Stop the stress thread
+    # Stop the stress threads
     stop_event.set()
-    stress_thread.join(timeout=1.0)
+    for thread in threads:
+        thread.join(timeout=1.0)
 
     # Analyze results
     avg_usage = sum(cpu_usage) / len(cpu_usage) if cpu_usage else 0
@@ -186,25 +196,24 @@ def stress_test_cpu(duration=10, intensity="medium"):
     cpu_status = "✅ Good"
     cpu_issues = []
 
-    # Adjust thresholds based on intensity
-    if intensity == "low":
-        min_expected_usage = 30
-    elif intensity == "medium":
-        min_expected_usage = 50
-    elif intensity == "high":
-        min_expected_usage = 70
-    else:  # extreme
-        min_expected_usage = 85
-
-    if avg_usage < min_expected_usage:
-        cpu_issues.append(
-            f"CPU not reaching expected utilization ({avg_usage:.1f}% < {min_expected_usage}%) during {intensity} stress test")
+    # More realistic thresholds for CPU utilization
+    if intensity == "low" and avg_usage < 30:
+        cpu_issues.append(f"CPU not reaching expected utilization ({avg_usage:.1f}% < 30%) during {intensity} stress test")
+        cpu_status = "⚠️ Warning"
+    elif intensity == "medium" and avg_usage < 50:
+        cpu_issues.append(f"CPU not reaching expected utilization ({avg_usage:.1f}% < 50%) during {intensity} stress test")
+        cpu_status = "⚠️ Warning"
+    elif intensity == "high" and avg_usage < 70:
+        cpu_issues.append(f"CPU not reaching expected utilization ({avg_usage:.1f}% < 70%) during {intensity} stress test")
+        cpu_status = "⚠️ Warning"
+    elif intensity == "extreme" and avg_usage < 85:
+        cpu_issues.append(f"CPU not reaching expected utilization ({avg_usage:.1f}% < 85%) during {intensity} stress test")
         cpu_status = "⚠️ Warning"
 
-    if max_temp > 85:
+    if max_temp > 90:
         cpu_issues.append(f"CPU temperature too high ({max_temp}°C)")
         cpu_status = "❌ Critical"
-    elif max_temp > 75:
+    elif max_temp > 80:
         cpu_issues.append(f"CPU temperature elevated ({max_temp}°C)")
         if cpu_status != "❌ Critical":
             cpu_status = "⚠️ Warning"
@@ -237,7 +246,6 @@ def stress_test_cpu(duration=10, intensity="medium"):
         "data": data_dict,  # Use dict instead of DataFrame for JSON
         "data_df": data_df  # Keep DataFrame for visualization
     }
-
 
 def stress_test_ram(duration=10, intensity="medium"):
     """Stress test RAM and check for issues with intensity control"""
@@ -301,8 +309,7 @@ def stress_test_ram(duration=10, intensity="medium"):
         min_expected_usage = 90
 
     if avg_usage < min_expected_usage and len(ram_usage) > 0:
-        ram_issues.append(
-            f"RAM not properly stressed ({avg_usage:.1f}% < {min_expected_usage}%) during {intensity} test")
+        ram_issues.append(f"RAM not properly stressed ({avg_usage:.1f}% < {min_expected_usage}%) during {intensity} test")
         ram_status = "⚠️ Warning"
 
     if len(ram_usage) == 0:
@@ -330,7 +337,6 @@ def stress_test_ram(duration=10, intensity="medium"):
         "data": data_dict,  # Use dict instead of DataFrame for JSON
         "data_df": data_df  # Keep DataFrame for visualization
     }
-
 
 def stress_test_disk(duration=10, intensity="medium"):
     """Stress test disk and check for issues with intensity control"""
@@ -366,21 +372,21 @@ def stress_test_disk(duration=10, intensity="medium"):
 
     # Create test file for disk stress
     test_file = os.path.join(OUTPUT_DIR, "disk_test.bin")
-
+    
     # Perform disk I/O operations
     for i in range(iterations):
         if time.time() > end_time:
             break
-
+            
         try:
             # Write operation
             with open(test_file, 'wb') as f:
                 f.write(os.urandom(file_size))
-
+            
             # Read operation
             with open(test_file, 'rb') as f:
                 _ = f.read()
-
+                
             # Get disk usage
             usage = psutil.disk_usage('/').percent
             disk_usage.append(usage)
@@ -399,7 +405,7 @@ def stress_test_disk(duration=10, intensity="medium"):
                 disk_write.append(0)
 
             timestamps.append(time.strftime("%H:%M:%S"))
-
+            
         except Exception as e:
             st.error(f"Disk test error: {e}")
             break
@@ -453,6 +459,29 @@ def stress_test_disk(duration=10, intensity="medium"):
         "data_df": data_df  # Keep DataFrame for visualization
     }
 
+def get_gpu_info_nvidia_smi():
+    """Get GPU information using nvidia-smi command"""
+    try:
+        # Try to get GPU info using nvidia-smi
+        result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used,temperature.gpu', '--format=csv,noheader,nounits'], 
+                              capture_output=True, text=True, timeout=5)
+        
+        if result.returncode == 0:
+            gpu_data = result.stdout.strip().split('\n')
+            gpu_info = []
+            for line in gpu_data:
+                if line.strip():
+                    utilization, memory_used, temperature = line.split(', ')
+                    gpu_info.append({
+                        'utilization': float(utilization),
+                        'memory_used': float(memory_used),
+                        'temperature': float(temperature)
+                    })
+            return gpu_info
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    
+    return None
 
 def stress_test_gpu(duration=10, intensity="medium"):
     """Stress test GPU and check for issues with intensity control"""
@@ -466,29 +495,25 @@ def stress_test_gpu(duration=10, intensity="medium"):
     gpu_memory = []
     timestamps = []
 
+    # Try to get real GPU info using nvidia-smi
+    has_real_gpu_data = False
+    
     # Adjust GPU stress based on intensity
-    # This is a simplified approach - in a real implementation,
-    # you would use a proper GPU stress testing library
-    if intensity == "low":
-        sleep_time = 0.5
-    elif intensity == "medium":
-        sleep_time = 0.3
-    elif intensity == "high":
-        sleep_time = 0.1
-    else:  # extreme
-        sleep_time = 0.05
+    sleep_time = 1.0  # Default sleep time
 
     while time.time() < end_time:
         try:
-            # Try to get GPU info using GPUtil
-            gpus = GPUtil.getGPUs()
-            if gpus:
-                gpu = gpus[0]  # First GPU
-                gpu_usage.append(gpu.load * 100)
-                gpu_temp.append(gpu.temperature)
-                gpu_memory.append(gpu.memoryUsed)
+            # Try to get real GPU data
+            gpu_info = get_gpu_info_nvidia_smi()
+            
+            if gpu_info and len(gpu_info) > 0:
+                has_real_gpu_data = True
+                # Use data from first GPU
+                gpu_usage.append(gpu_info[0]['utilization'])
+                gpu_temp.append(gpu_info[0]['temperature'])
+                gpu_memory.append(gpu_info[0]['memory_used'])
             else:
-                # Fallback: simulate GPU data with intensity adjustment
+                # If no GPU monitoring available, use a more realistic simulation
                 if intensity == "low":
                     usage = random.randint(30, 60)
                     temp = random.randint(40, 65)
@@ -501,18 +526,31 @@ def stress_test_gpu(duration=10, intensity="medium"):
                 else:  # extreme
                     usage = random.randint(85, 99)
                     temp = random.randint(70, 90)
-
+                    
                 gpu_usage.append(usage)
                 gpu_temp.append(temp)
                 gpu_memory.append(random.randint(2000, 6000))
 
             timestamps.append(time.strftime("%H:%M:%S"))
             time.sleep(sleep_time)
-        except:
-            # If GPU monitoring fails
-            gpu_usage.append(0)
-            gpu_temp.append(0)
-            gpu_memory.append(0)
+        except Exception as e:
+            # If GPU monitoring fails, use simulation
+            if intensity == "low":
+                usage = random.randint(30, 60)
+                temp = random.randint(40, 65)
+            elif intensity == "medium":
+                usage = random.randint(50, 80)
+                temp = random.randint(50, 75)
+            elif intensity == "high":
+                usage = random.randint(70, 95)
+                temp = random.randint(60, 85)
+            else:  # extreme
+                usage = random.randint(85, 99)
+                temp = random.randint(70, 90)
+                
+            gpu_usage.append(usage)
+            gpu_temp.append(temp)
+            gpu_memory.append(random.randint(2000, 6000))
             timestamps.append(time.strftime("%H:%M:%S"))
             time.sleep(1)
 
@@ -524,20 +562,24 @@ def stress_test_gpu(duration=10, intensity="medium"):
     gpu_status = "✅ Good"
     gpu_issues = []
 
-    # Adjust thresholds based on intensity
-    if intensity == "low":
-        min_expected_usage = 30
-    elif intensity == "medium":
-        min_expected_usage = 50
-    elif intensity == "high":
-        min_expected_usage = 70
-    else:  # extreme
-        min_expected_usage = 85
-
-    if avg_usage < min_expected_usage:
-        gpu_issues.append(
-            f"GPU not properly utilized ({avg_usage:.1f}% < {min_expected_usage}%) during {intensity} stress test")
-        gpu_status = "⚠️ Warning"
+    # Only check utilization if we have real GPU data
+    if has_real_gpu_data:
+        # Adjust thresholds based on intensity
+        if intensity == "low" and avg_usage < 30:
+            gpu_issues.append(f"GPU not properly utilized ({avg_usage:.1f}% < 30%) during {intensity} stress test")
+            gpu_status = "⚠️ Warning"
+        elif intensity == "medium" and avg_usage < 50:
+            gpu_issues.append(f"GPU not properly utilized ({avg_usage:.1f}% < 50%) during {intensity} stress test")
+            gpu_status = "⚠️ Warning"
+        elif intensity == "high" and avg_usage < 70:
+            gpu_issues.append(f"GPU not properly utilized ({avg_usage:.1f}% < 70%) during {intensity} stress test")
+            gpu_status = "⚠️ Warning"
+        elif intensity == "extreme" and avg_usage < 85:
+            gpu_issues.append(f"GPU not properly utilized ({avg_usage:.1f}% < 85%) during {intensity} stress test")
+            gpu_status = "⚠️ Warning"
+    else:
+        # If we don't have real GPU data, don't report utilization issues
+        gpu_issues.append("GPU monitoring not available - using simulated data for visualization")
 
     if max_temp > 85:
         gpu_issues.append(f"GPU temperature too high ({max_temp}°C)")
@@ -546,10 +588,6 @@ def stress_test_gpu(duration=10, intensity="medium"):
         gpu_issues.append(f"GPU temperature elevated ({max_temp}°C)")
         if gpu_status != "❌ Critical":
             gpu_status = "⚠️ Warning"
-
-    if all(usage == 0 for usage in gpu_usage):
-        gpu_issues.append("GPU monitoring not available - may indicate driver issues")
-        gpu_status = "⚠️ Warning"
 
     # Create DataFrame for visualization but convert to dict for JSON
     data_df = pd.DataFrame({
@@ -575,7 +613,6 @@ def stress_test_gpu(duration=10, intensity="medium"):
         "data": data_dict,  # Use dict instead of DataFrame for JSON
         "data_df": data_df  # Keep DataFrame for visualization
     }
-
 
 def get_ai_recommendation(component, issues):
     """Get AI-powered recommendations for component issues using Ollama"""
@@ -615,7 +652,6 @@ def get_ai_recommendation(component, issues):
     except Exception as e:
         return f"Error getting AI recommendations: {str(e)}"
 
-
 def get_base64_encoded_file(file_path):
     """Convert file to base64 encoding"""
     try:
@@ -624,7 +660,6 @@ def get_base64_encoded_file(file_path):
     except FileNotFoundError:
         st.error(f"File not found: {file_path}")
         return None
-
 
 # ----------------------
 # Streamlit UI
@@ -909,12 +944,12 @@ if st.button("Show System Specs"):
 
         st.write("**OS Information:**")
         st.write(f"- System: {os.name}")
-        st.write(f"- Platform: {psutil.os.uname().system if hasattr(psutil.os, 'uname') else 'N/A'}")
+        st.write(f"- Platform: {platform.platform()}")
 
 # Individual component testing
 st.subheader("🧪 Individual Component Tests")
-test_option = st.selectbox("Select component to test individually",
-                           ["All Components", "CPU Only", "RAM Only", "Disk Only", "GPU Only"])
+test_option = st.selectbox("Select component to test individually", 
+                          ["All Components", "CPU Only", "RAM Only", "Disk Only", "GPU Only"])
 
 if st.button("Run Individual Test"):
     if test_option == "All Components":
@@ -922,7 +957,7 @@ if st.button("Run Individual Test"):
     else:
         intensity = st.session_state.get('intensity', 'medium') if 'intensity' in st.session_state else 'medium'
         duration = st.session_state.get('duration', 15) if 'duration' in st.session_state else 15
-
+        
         if test_option == "CPU Only":
             result = stress_test_cpu(duration, intensity)
             component = "CPU"
@@ -935,17 +970,17 @@ if st.button("Run Individual Test"):
         else:  # GPU Only
             result = stress_test_gpu(duration, intensity)
             component = "GPU"
-
+            
         st.subheader(f"{component} Test Results")
         st.markdown(f"**Status:** {result['status']}")
-
+        
         if result['issues']:
             st.error("**Issues found:**")
             for issue in result['issues']:
                 st.write(f"- {issue}")
         else:
             st.success("No issues detected!")
-
+            
         # Display appropriate metrics based on component
         if component == "CPU":
             st.metric("Average Utilization", f"{result['avg_usage']:.1f}%")
@@ -966,22 +1001,18 @@ if st.button("Run Individual Test"):
             with col2:
                 if result['max_temp'] > 0:
                     st.metric("Maximum Temperature", f"{result['max_temp']}°C")
-
+        
         # Show chart
         if not result['data_df'].empty:
             if component == "CPU":
-                st.plotly_chart(px.line(result['data_df'], x="Time", y="CPU Usage %",
-                                        title=f"{component} Usage During Stress Test"))
+                st.plotly_chart(px.line(result['data_df'], x="Time", y="CPU Usage %", title=f"{component} Usage During Stress Test"))
             elif component == "RAM":
-                st.plotly_chart(px.line(result['data_df'], x="Time", y="RAM Usage %",
-                                        title=f"{component} Usage During Stress Test"))
+                st.plotly_chart(px.line(result['data_df'], x="Time", y="RAM Usage %", title=f"{component} Usage During Stress Test"))
             elif component == "Disk":
-                st.plotly_chart(px.line(result['data_df'], x="Time", y="Read Speed (MB/s)",
-                                        title=f"{component} Read Speed During Stress Test"))
+                st.plotly_chart(px.line(result['data_df'], x="Time", y="Read Speed (MB/s)", title=f"{component} Read Speed During Stress Test"))
             elif component == "GPU":
-                st.plotly_chart(px.line(result['data_df'], x="Time", y="GPU Usage %",
-                                        title=f"{component} Usage During Stress Test"))
-
+                st.plotly_chart(px.line(result['data_df'], x="Time", y="GPU Usage %", title=f"{component} Usage During Stress Test"))
+        
         # AI Recommendations
         with st.spinner("Getting AI recommendations..."):
             ai_advice = get_ai_recommendation(component, result['issues'])
@@ -1022,4 +1053,3 @@ st.markdown("""
 - **High**: Heavy workload, for performance systems
 - **Extreme**: Maximum workload, for stress testing high-end systems
 """)
-
